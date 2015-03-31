@@ -15,7 +15,7 @@
 * Possible future features:
 * 1. execution of old-fashioned "CGI's". 
 * 2. virtual hosts
-* 3. ...
+* 3. virtual directories (aliases)
 */
 
 // Filesystem ops...
@@ -36,11 +36,14 @@ var jutils = require('./jutils.js');
 // configuration parameters such as webRoot and port...
 var config = require('./config');
 
+var VERSION = "0.90";
 
-console.log(getTimeStamp() + ": " + "config.port = \"" + config.port + "\"...");
-console.log(getTimeStamp() + ": " + "config.webRoot = \"" + config.webRoot + "\"...");
 
-console.log(getTimeStamp() + ": " + "Listening for HTTP on port " + config.port  + "...");
+console.log(jutils.dateTimeCompact() + ": " + "httpd.js, version " + VERSION + "...");
+console.log(jutils.dateTimeCompact() + ": " + "config.port = \"" + config.port + "\"...");
+console.log(jutils.dateTimeCompact() + ": " + "config.webRoot = \"" + config.webRoot + "\"...");
+
+console.log(jutils.dateTimeCompact() + ": " + "Listening for HTTP on port " + config.port  + "...");
 
 // Accept a single user connection, pointed to by "theUser"...
 // Use the "Server Sent Events" (SSE) interface...
@@ -50,16 +53,16 @@ http.createServer(
 
 		try {	
 
-        	console.log(getTimeStamp() + ": " + "HTTP_REQUEST: From " + request.connection.remoteAddress + ' to URL ' + request.url);
+        	console.log(jutils.dateTimeCompact() + ": " + "HTTP_REQUEST: From " + request.connection.remoteAddress + ' to URL ' + request.url);
 
         	//var targetPath = path.normalize(__dirname + request.url);
         	var targetPath = path.normalize(config.webRoot + request.url);
 
-        	console.log(getTimeStamp() + ": " + "HTTP_REQUEST: targetPath = '" + targetPath + "'");
+        	console.log(jutils.dateTimeCompact() + ": " + "HTTP_REQUEST: targetPath = '" + targetPath + "'");
 
             var extension = path.extname(targetPath).substr(1);
 
-        	console.log(getTimeStamp() + ": " + "HTTP_REQUEST: extension = '" + extension + "'");
+        	console.log(jutils.dateTimeCompact() + ": " + "HTTP_REQUEST: extension = '" + extension + "'");
 
 			response.setHeader( "Cache-Control", "no-cache, must-revalidate" );
 
@@ -72,14 +75,14 @@ http.createServer(
 
 					if( fs.lstatSync(targetPath).isFile() ){
 
-	        			console.log(getTimeStamp() + ": " + "HTTP_REQUEST: Serving up static file page '" + targetPath + "'...");
+	        			console.log(jutils.dateTimeCompact() + ": " + "HTTP_REQUEST: Serving up static file page '" + targetPath + "'...");
 
 						// If corresponding file found, serve up a static page from the fileystem...
 						response.statusCode = 200;
 
 						var sContentType = extTranslator(extension);
 
-						console.log(getTimeStamp() + ": " + "HTTP_REQUEST: Content-type: " + sContentType + "...");
+						console.log(jutils.dateTimeCompact() + ": " + "HTTP_REQUEST: Content-type: " + sContentType + "...");
 						response.setHeader('Content-type', extTranslator(extension));
 
 						//stream file content to client
@@ -87,72 +90,13 @@ http.createServer(
 					}
 					else if( fs.lstatSync(targetPath).isDirectory() ){
 
-	        			console.log(getTimeStamp() + ": " + "HTTP_REQUEST: Looks like a directory...outputting directory listing...");
+	        			console.log(jutils.dateTimeCompact() + ": " + "HTTP_REQUEST: Looks like a directory...outputting directory listing...");
 
-						// Later we can add a config setting to allow or disallow
-						// directory indexes for security purposes...
-						//response.statusCode = 404;
-						//response.end('404 Directory Indexes Not Supported');
+						Helpers.outputDirectoryListing( request, response, targetPath );
 
-						// Output a directory index...
-						response.writeHead(200, { "Content-Type": "text/html" } );	
-						response.write("<!DOCTYPE HTML>\n");
-						response.write(
-						"<html>\n" +
-						" <head>\n" +
-						"  <title>Index of " + request.url + "</title>\n" +
-						" </head>\n" +
-						" <body>\n" +
-						"  <h1>Index of " + request.url + "</h1>\n" +
-						"  <ul>\n" 
-						);
-
-						var dirEntries = fs.readdirSync( targetPath );
-
-						dirEntries.forEach( function(dirEntry, idx){
-
-							//var sPath = request.url;
-							//
-							// If there's no "/" at the end of the url, append one...
-							//if( sPath.lastIndexOf("/") != sPath.length-1 ){
-							//	sPath += "/";
-							//}
-							//
-							//sPath += dirEntry;
-
-	        				console.log(getTimeStamp() + ": " + "HTTP_REQUEST: " + idx + ": dirEntry = '" + dirEntry + "'...\n");
-
-							//var sLocalPath = path.normalize( targetPath + dirEntry );
-							var sLocalPath = path.normalize( targetPath + "/" + dirEntry );
-	        				console.log(getTimeStamp() + ": " + "HTTP_REQUEST: " + idx + ": sLocalPath = '" + sLocalPath + "'...\n");
-
-							// Suffix of "/" on directory listing visually indicates a directory...
-							var sSuffix = "";
-							if( fs.lstatSync(sLocalPath).isDirectory() ){
-								sSuffix = "/";
-							}
-
-							var sUrlPath = path.normalize( request.url + "/" + dirEntry );
-
-							// In case we're on Windows, use front-slashes for the index URL's, thank you very much...
-							sUrlPath = sUrlPath.replace(/\\/g, "\/");
-
-	        				console.log(getTimeStamp() + ": " + "HTTP_REQUEST: " + idx + ": sUrlPath = '" + sUrlPath + "'...\n");
-
-							response.write(
-							"   <li><a href=\"" + sUrlPath + "\">" + dirEntry + sSuffix + "</a></li>\n"
-							);
-						});
-
-						response.write(
-						"  <ul>\n" +
-						" </body>\n"
-						);
-
-						response.end();
 					}
 					else { 
-	        			console.log(getTimeStamp() + ": " + "HTTP_REQUEST: Not a file nor a directory...");
+	        			console.log(jutils.dateTimeCompact() + ": " + "HTTP_REQUEST: Not a file nor a directory...");
 
 						response.statusCode = 404;
 						response.end('404 File Type Not Supported');
@@ -160,7 +104,7 @@ http.createServer(
 
 				} else {
 
-        			console.log(getTimeStamp() + ": " + "HTTP_REQUEST: '" + targetPath + "' does not exist, sending Code 404 Not Found...");
+        			console.log(jutils.dateTimeCompact() + ": " + "HTTP_REQUEST: '" + targetPath + "' does not exist, sending Code 404 Not Found...");
 
 					response.statusCode = 404;
 					response.end('404 Not Found');
@@ -168,13 +112,72 @@ http.createServer(
 			});
 
     } catch (e) {
-        console.log(getTimeStamp() + ": " + 'D\'oh!  ERROR: ' + e.message);
+        console.log(jutils.dateTimeCompact() + ": " + 'D\'oh!  ERROR: ' + e.message);
         res.statusCode = 500;
         res.end('500 Server error occurred');
     }
 
 }).listen( config.port );		
 
-function getTimeStamp(){
-	return jutils.dateTimeCompact();
-}
+
+var Helpers = {
+
+	outputDirectoryListing: function( request, response, targetPath ){
+
+		// Later we can add a config setting to allow or disallow
+		// directory indexes for security purposes...
+		//response.statusCode = 404;
+		//response.end('404 Directory Indexes Not Supported');
+	
+		// Output a directory index...
+		response.writeHead(200, { "Content-Type": "text/html" } );	
+		response.write("<!DOCTYPE HTML>\n");
+		response.write(
+		"<html>\n" +
+		" <head>\n" +
+		"  <title>Index of " + request.url + "</title>\n" +
+		" </head>\n" +
+		" <body>\n" +
+		"  <h1>Index of " + request.url + "</h1>\n" +
+		"  <ul>\n" 
+		);
+	
+		var dirEntries = fs.readdirSync( targetPath );
+	
+		dirEntries.forEach( function(dirEntry, idx){
+	
+			console.log(jutils.dateTimeCompact() + ": " + "HTTP_REQUEST: " + idx + ": dirEntry = '" + dirEntry + "'...\n");
+	
+			//var sLocalPath = path.normalize( targetPath + dirEntry );
+			var sLocalPath = path.normalize( targetPath + "/" + dirEntry );
+		        				console.log(jutils.dateTimeCompact() + ": " + "HTTP_REQUEST: " + idx + ": sLocalPath = '" + sLocalPath + "'...\n");
+	
+			// Use suffix of "/" on a directory in the "index" to visually indicates a directory.
+			// If we want to be fancy later on, we can use "folder" and "file" icons.
+			var sSuffix = "";
+			if( fs.lstatSync(sLocalPath).isDirectory() ){
+				sSuffix = "/";
+			}
+	
+			var sUrlPath = path.normalize( request.url + "/" + dirEntry );
+	
+			// In case we're on Windows, use front-slashes for the index URL's, thank you very much...
+			sUrlPath = sUrlPath.replace(/\\/g, "\/");
+	
+			console.log(jutils.dateTimeCompact() + ": " + "HTTP_REQUEST: " + idx + ": sUrlPath = '" + sUrlPath + "'...\n");
+	
+			response.write(
+			"   <li><a href=\"" + sUrlPath + "\">" + dirEntry + sSuffix + "</a></li>\n"
+			);
+		});
+	
+		response.write(
+		"  <ul>\n" +
+		" </body>\n"
+		);
+	
+		response.end();
+
+	}/* outputDirectoryListing() */
+
+}/* Helpers */
