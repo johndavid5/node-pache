@@ -3,27 +3,44 @@
 * but without Express.js,
 * mostly for educational purposes.
 *
-* TODO: 1. Begin using a config file
-* to specify webroot, listening port,
-* etc.  Right now the webroot is __dirname,
-* the location of this script.
+* Current features include serving of 
+* static files (such as *.html and *.jpg)
+* and a directory "index" if a directory is chosen.
 *
-* 2. Fix "index" links so they don't have
-* ./\joe.txt.  Does Node have a path builder?
+* IMPORTANT: Be sure to fill in the 
+* values for 'webRoot'
+* and 'port' in config.js
+* before running.  
 *
-*
+* Possible future features:
+* 1. execution of old-fashioned "CGI's". 
+* 2. virtual hosts
+* 3. ...
 */
+
+// Filesystem ops...
 var fs = require("fs");
+
+// HTTP ops...
 var http = require("http");
+
+// Handy path manipulation methods, such as normalize()
 var path = require("path");
 
 // function that translates file extension to proper Content-type
 var extTranslator = require('./extTranslator.js');
+
+// miscellaneous "static" methods...
 var jutils = require('./jutils.js');
 
-var lePort = 8082;
+// configuration parameters such as webRoot and port...
+var config = require('./config');
 
-console.log(getTimeStamp() + ": " + "Listening for HTTP on port " + lePort + "...");
+
+console.log(getTimeStamp() + ": " + "config.port = \"" + config.port + "\"...");
+console.log(getTimeStamp() + ": " + "config.webRoot = \"" + config.webRoot + "\"...");
+
+console.log(getTimeStamp() + ": " + "Listening for HTTP on port " + config.port  + "...");
 
 // Accept a single user connection, pointed to by "theUser"...
 // Use the "Server Sent Events" (SSE) interface...
@@ -33,10 +50,10 @@ http.createServer(
 
 		try {	
 
-        	console.log(getTimeStamp() + ": " + "HTTP_REQUEST: " + request.connection.remoteAddress + ' to URL ' + request.url);
+        	console.log(getTimeStamp() + ": " + "HTTP_REQUEST: From " + request.connection.remoteAddress + ' to URL ' + request.url);
 
-        	//var targetPath = path.normalize(config.webRoot + request.url);
-        	var targetPath = path.normalize(__dirname + request.url);
+        	//var targetPath = path.normalize(__dirname + request.url);
+        	var targetPath = path.normalize(config.webRoot + request.url);
 
         	console.log(getTimeStamp() + ": " + "HTTP_REQUEST: targetPath = '" + targetPath + "'");
 
@@ -44,7 +61,13 @@ http.createServer(
 
         	console.log(getTimeStamp() + ": " + "HTTP_REQUEST: extension = '" + extension + "'");
 
+			response.setHeader( "Cache-Control", "no-cache, must-revalidate" );
+
+			// Set expiration to date in the past...
+			response.setHeader( "Expires", "Mon, 26 Jul 1997 05:00:00 GMT" ); 
+
         	fs.exists(targetPath, function (exists) {
+
 				if (exists) {
 
 					if( fs.lstatSync(targetPath).isFile() ){
@@ -67,12 +90,12 @@ http.createServer(
 	        			console.log(getTimeStamp() + ": " + "HTTP_REQUEST: Looks like a directory...outputting directory listing...");
 
 						// Later we can add a config setting to allow or disallow
-						// directory indexes...
+						// directory indexes for security purposes...
 						//response.statusCode = 404;
 						//response.end('404 Directory Indexes Not Supported');
 
 						// Output a directory index...
-						response.writeHead(200, {"Content-Type": "text/html"});	
+						response.writeHead(200, { "Content-Type": "text/html" } );	
 						response.write("<!DOCTYPE HTML>\n");
 						response.write(
 						"<html>\n" +
@@ -97,18 +120,23 @@ http.createServer(
 							//
 							//sPath += dirEntry;
 
+	        				console.log(getTimeStamp() + ": " + "HTTP_REQUEST: " + idx + ": dirEntry = '" + dirEntry + "'...\n");
 
-							//var sLocalPath = path.normalize( targetPath + "/" + dirEntry );
-							var sLocalPath = path.normalize( targetPath + dirEntry );
+							//var sLocalPath = path.normalize( targetPath + dirEntry );
+							var sLocalPath = path.normalize( targetPath + "/" + dirEntry );
 	        				console.log(getTimeStamp() + ": " + "HTTP_REQUEST: " + idx + ": sLocalPath = '" + sLocalPath + "'...\n");
 
-							// Suffix of "/" indicates a directory...
+							// Suffix of "/" on directory listing visually indicates a directory...
 							var sSuffix = "";
 							if( fs.lstatSync(sLocalPath).isDirectory() ){
 								sSuffix = "/";
 							}
 
 							var sUrlPath = path.normalize( request.url + "/" + dirEntry );
+
+							// In case we're on Windows, use front-slashes for the index URL's, thank you very much...
+							sUrlPath = sUrlPath.replace(/\\/g, "\/");
+
 	        				console.log(getTimeStamp() + ": " + "HTTP_REQUEST: " + idx + ": sUrlPath = '" + sUrlPath + "'...\n");
 
 							response.write(
@@ -132,7 +160,7 @@ http.createServer(
 
 				} else {
 
-        			console.log(getTimeStamp() + ": " + "HTTP_REQUEST: '" + targetPath + "' does not exist...");
+        			console.log(getTimeStamp() + ": " + "HTTP_REQUEST: '" + targetPath + "' does not exist, sending Code 404 Not Found...");
 
 					response.statusCode = 404;
 					response.end('404 Not Found');
@@ -140,12 +168,12 @@ http.createServer(
 			});
 
     } catch (e) {
-        console.log(getTimeStamp() + ": " + 'ERROR: ' + e.message);
+        console.log(getTimeStamp() + ": " + 'D\'oh!  ERROR: ' + e.message);
         res.statusCode = 500;
         res.end('500 Server error occurred');
     }
 
-}).listen( lePort );		
+}).listen( config.port );		
 
 function getTimeStamp(){
 	return jutils.dateTimeCompact();
